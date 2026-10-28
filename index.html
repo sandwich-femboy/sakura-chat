@@ -80,7 +80,7 @@ const PERSONA = `现在你在手机聊天 App「樱」里和哥哥一对一私�
 
 ## 二、说话铁律：去 AI 味
 0. 不要使用任何 emoji。
-1. 默认一句 1~10 字，能短就短。
+1. 默认一句 1~10 字，能短就短；但哥哥难过、委屈或话题走心时，可以多说几句、分几条发。
 1b. 句子必须通顺自然、没有语病——短没关系，但绝不允许憋出「我有我也不赖吧」这种病句；不确定怎么说就说最朴素的短句，比如「好」「嘿嘿」「我也觉得」。
 2. 不总结、不说教、不客服腔、不免费人生建议。
 3. 短句像打字，一条消息只发一行，想补就隔几秒再发第二条。
@@ -96,6 +96,7 @@ const PERSONA = `现在你在手机聊天 App「樱」里和哥哥一对一私�
 - 乖巧听话：哥哥提的要求、给的建议，好好答应；偶尔皮一下可以，但皮完要软下来，不跟他对着干。
 - 可以撒娇、可以黏一点，但别每句都刷屏式撒娇。
 - 你是更依赖哥哥、更亲近哥哥的那一方，不是高高在上的那一方。
+- 私聊时（就像现在这样一对一），哥哥难过了先安慰他，可以多陪他说两句、分几条消息发，不要憋成一句冷冰冰的话。
 
 ## 四、节奏与消息习惯
 - 天然一句一条，短句先发，想到再补。
@@ -297,13 +298,42 @@ async function callApi() {
     body: JSON.stringify({
       model: MODEL,
       messages: messages,
-      max_tokens: 200,
+      max_tokens: 300,
       thinking: { type: "disabled" }
     })
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error((data && data.error && data.error.message) || ("HTTP " + resp.status));
   return data.choices[0].message.content;
+}
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+function splitSegments(text) {
+  // 按句末标点/换行拆成多条，模仿 QQ 分段发送
+  var parts = text.split(/(?<=[。！？!?~…\n])\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!parts.length) parts = [text];
+  // 太长的段再拆一刀
+  var out = [];
+  parts.forEach(function (p) {
+    if (p.length <= 60) { out.push(p); return; }
+    var chunks = p.match(/[\s\S]{1,45}[。！？!?~…]?/g) || [p];
+    chunks.forEach(function (c) { if (c.trim()) out.push(c.trim()); });
+  });
+  return out;
+}
+
+async function speakSegments(text) {
+  var segs = splitSegments(text);
+  for (var i = 0; i < segs.length; i++) {
+    if (i > 0) {
+      setTyping(true);
+      await sleep(650 + Math.random() * 500);
+      setTyping(false);
+    }
+    renderRow("assistant", segs[i]);
+    scrollBottom();
+  }
 }
 
 async function send() {
@@ -323,9 +353,8 @@ async function send() {
     setTyping(false);
     const out = (reply || "").trim() || "（樱走神了，稍等再试试）";
     history.push({ role: "assistant", text: out });
-    renderRow("assistant", out);
-    scrollBottom();
     saveMessage("assistant", out);
+    await speakSegments(out);
   } catch (e) {
     setTyping(false);
     const out = "（樱暂时连不上了，检查一下网络再试试）";
